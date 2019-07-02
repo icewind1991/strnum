@@ -12,11 +12,11 @@ enum Values {
 
 #[derive(StrNum, Debug, PartialEq)]
 enum RenamedValues {
-    #[name = "one"]
+    #[value = "one"]
     One,
-    #[name = "two"]
+    #[value = "two"]
     Two,
-    #[name = "three"]
+    #[value = "three"]
     Three,
     Other(String),
 }

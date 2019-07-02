@@ -6,7 +6,7 @@ use syn::{parse_macro_input, Attribute, Data, DeriveInput, Fields, Ident};
 use syn_util::get_attribute_value;
 
 /// See the [crate documentation](index.html) for details
-#[proc_macro_derive(StrNum, attributes(name))]
+#[proc_macro_derive(StrNum, attributes(value))]
 pub fn derive_strnum(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input: DeriveInput = parse_macro_input!(input as DeriveInput);
 
@@ -24,7 +24,7 @@ fn derive(data: Data, enum_name: &Ident, _attrs: &Vec<Attribute>) -> TokenStream
                 .variants
                 .iter()
                 .map(|variant| {
-                    let name: String = get_attribute_value(&variant.attrs, &["name"])
+                    let name: String = get_attribute_value(&variant.attrs, &["value"])
                         .unwrap_or(variant.ident.to_string());
                     let catch_all = match &variant.fields {
                         Fields::Unit => false,
