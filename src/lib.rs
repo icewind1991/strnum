@@ -49,7 +49,7 @@ fn derive(data: Data, enum_name: &Ident, _attrs: &Vec<Attribute>) -> TokenStream
                 _ => panic!("Only a single catch-all variant is supported"),
             };
 
-            let mut match_arms: Vec<_> = options
+            let match_arms: Vec<_> = options
                 .iter()
                 .map(|option| {
                     let ident = &option.ident;
@@ -57,7 +57,7 @@ fn derive(data: Data, enum_name: &Ident, _attrs: &Vec<Attribute>) -> TokenStream
                     if has_fallback {
                         if option.catch_all {
                             quote_spanned! { span =>
-                                _ => #enum_name::#ident(value)
+                                _ => #enum_name::#ident(value.into())
                             }
                         } else {
                             quote_spanned! { span =>
@@ -72,11 +72,7 @@ fn derive(data: Data, enum_name: &Ident, _attrs: &Vec<Attribute>) -> TokenStream
                 })
                 .collect();
 
-            if !has_fallback {
-                match_arms.push(quote_spanned! { span =>
-                    _ => Err(value)
-                });
-            }
+            let cloned_match_arms = match_arms.clone();
 
             let from = if has_fallback {
                 quote_spanned! { span =>
@@ -90,7 +86,9 @@ fn derive(data: Data, enum_name: &Ident, _attrs: &Vec<Attribute>) -> TokenStream
 
                     impl ::std::convert::From<&str> for #enum_name {
                         fn from(value: &str) -> Self {
-                            Self::from(value.to_string())
+                            match value {
+                                #(#cloned_match_arms ,)*
+                            }
                         }
                     }
                 }
@@ -102,6 +100,7 @@ fn derive(data: Data, enum_name: &Ident, _attrs: &Vec<Attribute>) -> TokenStream
                         fn try_from(value: String) -> Result<Self, Self::Error> {
                             match value.as_str() {
                                 #(#match_arms ,)*
+                                _ => Err(value)
                             }
                         }
                     }
@@ -110,7 +109,10 @@ fn derive(data: Data, enum_name: &Ident, _attrs: &Vec<Attribute>) -> TokenStream
                         type Error = String;
 
                         fn try_from(value: &str) -> Result<Self, Self::Error> {
-                            Self::try_from(value.to_string())
+                            match value {
+                                #(#cloned_match_arms ,)*
+                                _ => Err(value.to_string())
+                            }
                         }
                     }
                 }
@@ -153,7 +155,7 @@ fn derive(data: Data, enum_name: &Ident, _attrs: &Vec<Attribute>) -> TokenStream
                     }
                 }
 
-               impl ::std::convert::From<#enum_name> for String {
+                impl ::std::convert::From<#enum_name> for String {
                     fn from(from: #enum_name) -> String {
                         match from {
                             #(#to_string_arms ,)*
