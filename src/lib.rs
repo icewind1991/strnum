@@ -1,8 +1,11 @@
+#![recursion_limit = "128"]
+
 extern crate proc_macro;
 
-use proc_macro2::TokenStream;
+use proc_macro2::{Span, TokenStream};
 use quote::quote_spanned;
-use syn::{parse_macro_input, Attribute, Data, DeriveInput, Fields, Ident};
+use syn::spanned::Spanned;
+use syn::{parse_macro_input, Attribute, Data, DeriveInput, Fields, Ident, Variant};
 use syn_util::get_attribute_value;
 
 /// See the [crate documentation](index.html) for details
@@ -20,28 +23,8 @@ fn derive(data: Data, enum_name: &Ident, _attrs: &Vec<Attribute>) -> TokenStream
 
     match data {
         Data::Enum(data) => {
-            let options: Vec<_> = data
-                .variants
-                .iter()
-                .map(|variant| {
-                    let name: String = get_attribute_value(&variant.attrs, &["value"])
-                        .unwrap_or(variant.ident.to_string());
-                    let catch_all = match &variant.fields {
-                        Fields::Unit => false,
-                        Fields::Named(_) => panic!("Only single unnamed enum field is supported"),
-                        Fields::Unnamed(fields) if fields.unnamed.len() > 1 => {
-                            panic!("Only a single unnamed enum field is supported")
-                        }
-                        Fields::Unnamed(_) => true,
-                    };
-
-                    StringOption {
-                        ident: variant.ident.clone(),
-                        name,
-                        catch_all,
-                    }
-                })
-                .collect();
+            let options: Vec<StringOption> =
+                data.variants.into_iter().map(StringOption::from).collect();
 
             let has_fallback = match options.iter().filter(|option| option.catch_all).count() {
                 0 => false,
@@ -52,34 +35,31 @@ fn derive(data: Data, enum_name: &Ident, _attrs: &Vec<Attribute>) -> TokenStream
             let match_arms: Vec<_> = options
                 .iter()
                 .map(|option| {
+                    let span = option.span;
                     let ident = &option.ident;
                     let string = &option.name;
-                    if has_fallback {
-                        if option.catch_all {
-                            quote_spanned! { span =>
-                                _ => #enum_name::#ident(value.into())
-                            }
-                        } else {
-                            quote_spanned! { span =>
-                                #string => #enum_name::#ident
-                            }
+                    if option.catch_all {
+                        quote_spanned! { span =>
+                            _ => #enum_name::#ident(value.into())
                         }
                     } else {
                         quote_spanned! { span =>
-                            #string => Ok(#enum_name::#ident)
+                            #string => #enum_name::#ident
                         }
                     }
                 })
                 .collect();
 
-            let cloned_match_arms = match_arms.clone();
+            // quote! takes ownership of anything passed to it, so instead of cloning the match arms we grab 2 Iter's
+            let match_arms_1 = match_arms.iter();
+            let match_arms_2 = match_arms.iter();
 
             let from = if has_fallback {
                 quote_spanned! { span =>
                     impl ::std::convert::From<String> for #enum_name {
                         fn from(value: String) -> Self {
                             match value.as_str() {
-                                #(#match_arms ,)*
+                                #(#match_arms_1 ,)*
                             }
                         }
                     }
@@ -87,7 +67,7 @@ fn derive(data: Data, enum_name: &Ident, _attrs: &Vec<Attribute>) -> TokenStream
                     impl ::std::convert::From<&str> for #enum_name {
                         fn from(value: &str) -> Self {
                             match value {
-                                #(#cloned_match_arms ,)*
+                                #(#match_arms_2 ,)*
                             }
                         }
                     }
@@ -98,10 +78,10 @@ fn derive(data: Data, enum_name: &Ident, _attrs: &Vec<Attribute>) -> TokenStream
                         type Error = String;
 
                         fn try_from(value: String) -> Result<Self, Self::Error> {
-                            match value.as_str() {
-                                #(#match_arms ,)*
-                                _ => Err(value)
-                            }
+                            Ok(match value.as_str() {
+                                #(#match_arms_1 ,)*
+                                _ => return Err(value)
+                            })
                         }
                     }
 
@@ -109,16 +89,17 @@ fn derive(data: Data, enum_name: &Ident, _attrs: &Vec<Attribute>) -> TokenStream
                         type Error = String;
 
                         fn try_from(value: &str) -> Result<Self, Self::Error> {
-                            match value {
-                                #(#cloned_match_arms ,)*
-                                _ => Err(value.to_string())
-                            }
+                            Ok(match value {
+                                #(#match_arms_2 ,)*
+                                _ => return Err(value.to_string())
+                            })
                         }
                     }
                 }
             };
 
             let display_arms = options.iter().map(|option| {
+                let span = option.span;
                 let ident = &option.ident;
                 let string = &option.name;
                 if option.catch_all {
@@ -133,6 +114,7 @@ fn derive(data: Data, enum_name: &Ident, _attrs: &Vec<Attribute>) -> TokenStream
             });
 
             let to_string_arms = options.iter().map(|option| {
+                let span = option.span;
                 let ident = &option.ident;
                 let string = &option.name;
                 if option.catch_all {
@@ -178,4 +160,28 @@ struct StringOption {
     ident: Ident,
     name: String,
     catch_all: bool,
+    span: Span,
+}
+
+impl From<Variant> for StringOption {
+    fn from(variant: Variant) -> Self {
+        let span = variant.span();
+        let name: String = get_attribute_value(&variant.attrs, &["value"])
+            .unwrap_or_else(|| variant.ident.to_string());
+        let catch_all = match variant.fields {
+            Fields::Unit => false,
+            Fields::Named(_) => panic!("Only single unnamed enum field is supported"),
+            Fields::Unnamed(ref fields) if fields.unnamed.len() > 1 => {
+                panic!("Only a single unnamed enum field is supported")
+            }
+            Fields::Unnamed(_) => true,
+        };
+
+        StringOption {
+            ident: variant.ident,
+            name,
+            catch_all,
+            span,
+        }
+    }
 }
