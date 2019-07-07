@@ -1,4 +1,62 @@
 #![recursion_limit = "128"]
+//! Store common string values in enum variants
+//!
+//! # StrNum
+//!
+//! StrNum can be derived for enum that contain a number of unit fields for every string option and
+//! optionally one field containing a `String` as fallback option.
+//!
+//! If a fallback option is provided `From<String>` and `From<&'str>` is implemented for the enum,
+//! if no fallback option is provided `TryFrom` is implemented instead.
+//!
+//! Additionally, `Display` and `Into<String>` is implemented for the enum.
+//!
+//! ## Examples
+//!
+//! ```
+//! use strnum::StrNum;
+//!
+//! #[derive(StrNum, PartialEq, Debug)]
+//! enum Cities {
+//!     Amsterdam,
+//!     #[value = "New York"] // you can overwrite the string value by attribute
+//!     NewYork,
+//!     Tokyo,
+//!     Other(String)
+//! }
+//!
+//! fn main() {
+//!     let first = Cities::from("Amsterdam");
+//!     assert_eq!(Cities::Amsterdam, first);
+//!     assert_eq!("Amsterdam", String::from(first));
+//!
+//!     let second = Cities::from("Dublin");
+//!     assert_eq!(Cities::Other("Dublin".to_string()), second);
+//!     assert_eq!("Dublin", String::from(second));
+//! }
+//!```
+//!
+//! ```
+//! use strnum::StrNum;
+//! use std::convert::TryFrom;
+//!
+//! #[derive(StrNum, PartialEq, Debug)]
+//! enum SupportedCities {
+//!     Amsterdam,
+//!     #[value = "New York"] // you can overwrite the string value by attribute
+//!     NewYork,
+//!     Tokyo
+//! }
+//!
+//! fn main() {
+//!     let first = SupportedCities::try_from("Amsterdam");
+//!     assert_eq!(Ok(SupportedCities::Amsterdam), first);
+//!     assert_eq!("Amsterdam", String::from(first.unwrap()));
+//!
+//!     let second = SupportedCities::try_from("Dublin");
+//!     assert_eq!(true, second.is_err());
+//! }
+//!```
 
 extern crate proc_macro;
 
