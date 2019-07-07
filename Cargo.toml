@@ -3,6 +3,9 @@ name = "strnum"
 version = "0.1.0"
 authors = ["Robin Appelman <robin@icewind.nl>"]
 edition = "2018"
+description = "Store common string values in enum variants"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/icewind1991/strnum"
 
 [lib]
 name = "strnum"
